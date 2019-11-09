@@ -2,14 +2,17 @@ import paho.mqtt.client as mqtt
 from influxdb import InfluxDBClient
 import logging
 from requests.exceptions import ConnectionError
+import os.path
+import json
 
-DB_SERVER = "127.0.0.1"
+DB_SERVER = "192.168.0.3"
 DB_PORT = 8086
 DB_NAME = "home"
 MQTT_SERVER = "127.0.0.1"
 MQTT_PORT = 1883
 BASE_SUBSCRIPTION = "home/#"
 KNOWN_MEASUREMENTS = ['temperature', 'humidity']
+JSON_FILENAME = "measurements_config.json"
 
 # The callback for when the client receives a CONNACK response from the server.
 def on_connect(client, userdata, flags, rc):
@@ -23,23 +26,46 @@ def on_connect(client, userdata, flags, rc):
 # The callback for when a PUBLISH message is received from the server.
 def on_message(client, userdata, msg):
     topic = msg.topic.split('/')
-    if topic[2] in KNOWN_MEASUREMENTS:
-        json_body = [
+    device = topic[1]
+    measurement = topic[2]
+    if measurement in KNOWN_MEASUREMENTS:
+        conf = get_series_conf(device, measurement)
+        new_point = [
         {
-            "measurement": topic[2],
+            "measurement": measurement,
             "tags": {
-                "device": topic[1],
+                "device": device,
             },
             "fields": {
                 "value": float(msg.payload)
             }
         }
         ]
-        print(json_body)
-        db.write_points(json_body)
+        print(new_point)
+        db.write_points(new_point)
     else:
-        print(topic[2], "is not a recognised measurement type.")
+        print(measurement, "is not a recognised measurement type.")
 
+def get_series_conf(device, measurement):
+    if device not in config.keys():
+        config[device] = {}
+    if measurement not in config[device].keys():
+        config[device][measurement] = {"filter_type": "none", "filter": 0}
+        save_config_json(config)
+    return config[device][measurement]
+
+def load_config_json():
+    data = {}
+    if os.path.exists(JSON_FILENAME):
+        with open(JSON_FILENAME) as f:
+            data = json.load(f)
+    return data
+
+def save_config_json(data):
+    with open(JSON_FILENAME, "w+") as f:
+        json.dump(data, f, indent=4)
+
+config = load_config_json()
 db = InfluxDBClient(DB_SERVER, DB_PORT, database=DB_NAME)
 try:
     db.ping()
@@ -57,4 +83,7 @@ try:
 
 except ConnectionError:
     print("Could not connect to DB at", DB_SERVER)
-    print("Exiting.")
+except KeyboardInterrupt:
+    print("Process interrupted")
+finally:
+    print("Exiting")
