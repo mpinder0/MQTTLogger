@@ -4,6 +4,8 @@ import logging
 from requests.exceptions import ConnectionError
 import os.path
 import json
+import signal
+import sys
 
 DB_SERVER = "192.168.0.3"
 DB_PORT = 8086
@@ -65,6 +67,12 @@ def save_config_json(data):
     with open(JSON_FILENAME, "w+") as f:
         json.dump(data, f, indent=4)
 
+def sig_exit(signum, frame):
+    print("Exiting.")
+    client.disconnect()
+
+signal.signal(signal.SIGINT, sig_exit)
+signal.signal(signal.SIGTERM, sig_exit)
 config = load_config_json()
 db = InfluxDBClient(DB_SERVER, DB_PORT, database=DB_NAME)
 try:
@@ -83,7 +91,4 @@ try:
 
 except ConnectionError:
     print("Could not connect to DB at", DB_SERVER)
-except KeyboardInterrupt:
-    print("Process interrupted")
-finally:
-    print("Exiting")
+    sys.exit(1)
