@@ -16,6 +16,8 @@ BASE_SUBSCRIPTION = "home/#"
 KNOWN_MEASUREMENTS = ['temperature', 'humidity']
 JSON_FILENAME = "measurements_config.json"
 
+last_value = 0
+
 # The callback for when the client receives a CONNACK response from the server.
 def on_connect(client, userdata, flags, rc):
     print("Connected to MQTT server.")
@@ -32,21 +34,38 @@ def on_message(client, userdata, msg):
     measurement = topic[2]
     if measurement in KNOWN_MEASUREMENTS:
         conf = get_series_conf(device, measurement)
-        new_point = [
-        {
-            "measurement": measurement,
-            "tags": {
-                "device": device,
-            },
-            "fields": {
-                "value": float(msg.payload)
+        val = float(msg.payload)
+        if filter_value(val, conf):
+            new_point = [
+            {
+                "measurement": measurement,
+                "tags": {
+                    "device": device,
+                },
+                "fields": {
+                    "value": val
+                }
             }
-        }
-        ]
-        print(new_point)
-        db.write_points(new_point)
+            ]
+            print(new_point)
+            db.write_points(new_point)
+        else:
+            print('value', val, 'did not meet filter criteria -', conf['filter_type'], ':', conf['filter'])
     else:
         print(measurement, "is not a recognised measurement type.")
+
+def filter_value(value, config):
+    global last_value
+    if config['filter_type'] == 'absolute':
+        low = last_value - config['filter']
+        high = last_value + config['filter']
+        if low < value < high:
+            return False
+        else:
+            last_value = value
+            return True
+    else:
+        return True
 
 def get_series_conf(device, measurement):
     if device not in config.keys():
