@@ -1,6 +1,7 @@
 [Service]
 Type=simple
-ExecStart=/usr/bin/python3 /home/matt/PycharmProjects/MQTTLogger/MQTTLogger.py
+ExecStart=/usr/bin/python3 /home/matt/MQTTLogger/MQTTLogger.py
+User=matt
 
 [Install]
 WantedBy=multi-user.target
