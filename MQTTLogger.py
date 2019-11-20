@@ -15,14 +15,18 @@ MQTT_SERVER = "127.0.0.1"
 MQTT_PORT = 1883
 BASE_SUBSCRIPTION = "home/#"
 KNOWN_MEASUREMENTS = ['temperature', 'humidity']
-CONFIG_FILENAME = "measurements_config.json"
-NEW_CONFIG = {
+CONFIG_FILENAME = "data.json"
+NEW_DEVICE_DATA = {
+    "series": {},
+    "timeout_seconds": 120,
+    "online": False,
+    "last_time": None
+}
+NEW_MEASUREMENT_DATA = {
     "filter_type": "none",
     "filter": 0.0,
-    "retained_days": 365,
-    "timeout_seconds": 120
+    "last_value": None
 }
-last_received = {}
 
 # The callback for when the client receives a CONNACK response from the server.
 def on_connect(client, userdata, flags, rc):
@@ -35,18 +39,20 @@ def on_connect(client, userdata, flags, rc):
 
 # The callback for when a PUBLISH message is received from the server.
 def on_message(client, userdata, msg):
+    global config
     topic = msg.topic.split('/')
     device = topic[1]
     measurement = topic[2]
     if measurement in KNOWN_MEASUREMENTS:
-        conf = get_series_conf(device, measurement)
+        create_series_conf(device, measurement)
         val = float(msg.payload)
-        if filter_value(conf, device, measurement, val):
+        if filter_value(config, device, measurement, val):
             db_write_point(device, measurement, val)
-        else:
-            print('value', val, 'did not meet filter criteria -', conf['filter_type'], ':', conf['filter'])
 
-        set_last_received(device, measurement, val)
+        config[device]["last_time"] = time.time()
+        config[device]["series"][measurement]["last_value"] = val
+        if not config[device]["online"]:
+            config[device]["online"] = True
     else:
         print(measurement, "is not a recognised measurement type.")
 
@@ -65,40 +71,25 @@ def db_write_point(device, measurement, value):
     print(new_point)
     db.write_points(new_point)
 
-def set_last_received(device, measurement, value):
-    global last_received
-    if device not in last_received.keys():
-        last_received[device] = {}
-    last_received[device][measurement] = (time.time(), value)
+def filter_value(conf, device, series, value):
+    series_conf = conf[device]["series"][series]
+    last_value = series_conf["last_value"]
+    if conf[device]["online"] and last_value is not None:
+        if series_conf['filter_type'] == 'absolute':
+            low = last_value - series_conf['filter']
+            high = last_value + series_conf['filter']
+            if low < value < high:
+                return False
+    # if anything else, return true
+    return True
 
-def filter_value(config, device, measurement, value):
-    global last_received
-    try:
-        last_value = last_received[device][measurement][1]
-    except:
-        return True
-
-    if last_value == 'offline':
-        return True
-
-    if config['filter_type'] == 'absolute':
-        low = last_value - config['filter']
-        high = last_value + config['filter']
-        if low < value < high:
-            return False
-        else:
-            return True
-    else:
-        return True
-
-def get_series_conf(device, measurement):
+def create_series_conf(device, measurement):
     global config
     if device not in config.keys():
-        config[device] = {}
-    if measurement not in config[device].keys():
-        config[device][measurement] = NEW_CONFIG
+        config[device] = NEW_DEVICE_DATA
+    if measurement not in config[device]["series"].keys():
+        config[device]["series"][measurement] = NEW_MEASUREMENT_DATA
         save_config_json(config)
-    return config[device][measurement]
 
 def load_config_json():
     data = {}
@@ -137,15 +128,13 @@ try:
     client.loop_start()
 
     while run:
-        for device_k, device_v in last_received.items():
-            for measurement_k, measurement_v in device_v.items():
-                if measurement_v[1] is not 'offline':
-                    print(config[device_k][measurement_k])
-                    print(measurement_v[0])
-                    if time.time() > measurement_v[0] + config[device_k][measurement_k]['timeout_seconds']:
-                        db_write_point(device_k, measurement_k, False)
-                        set_last_received(device_k, measurement_k,"offline")
-        print('.')
+        print(config)
+        online_devices = {k:v for k,v in config.items() if v["online"]}
+        for device_name, device in online_devices.items():
+            if time.time() > device["last_time"] + device['timeout_seconds']:
+                print("device", device_name, "is offline.")
+                db_write_point(device_name, "status", False)
+                device["online"] = False
         time.sleep(1)
 
 except ConnectionError:
