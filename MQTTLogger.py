@@ -28,10 +28,15 @@ NEW_MEASUREMENT_DATA = {
     "last_value": None
 }
 
+logging.basicConfig()
+logger = logging.getLogger("MQTTLogger")
+logger.setLevel(logging.DEBUG)
+
 # The callback for when the client receives a CONNACK response from the server.
 def on_connect(client, userdata, flags, rc):
-    print("Connected to MQTT server.")
-    print("Subscribing", BASE_SUBSCRIPTION)
+    global logger
+    logger.info("Connected to MQTT server.")
+    logger.info("Subscribing {}".format(BASE_SUBSCRIPTION))
 
     # Subscribing in on_connect() means that if we lose the connection and
     # reconnect then subscriptions will be renewed.
@@ -54,7 +59,7 @@ def on_message(client, userdata, msg):
         if not config[device]["online"]:
             config[device]["online"] = True
     else:
-        print(measurement, "is not a recognised measurement type.")
+        logger.warning("{} is not a recognised measurement type.".format(measurement))
 
 def db_write_point(device, measurement, value):
     new_point = [
@@ -68,7 +73,7 @@ def db_write_point(device, measurement, value):
             }
         }
     ]
-    print(new_point)
+    logger.debug(new_point)
     db.write_points(new_point)
 
 def filter_value(conf, device, series, value):
@@ -104,7 +109,7 @@ def save_config_json(data):
 
 def sig_exit(signum, frame):
     global run
-    print("Exiting.")
+    logger.info("Exiting.")
     client.loop_stop()
     run = False
 
@@ -117,7 +122,6 @@ try:
     db.ping()
 
     client = mqtt.Client()
-    logger = logging.getLogger(__name__)
     client.enable_logger(logger)
 
     client.on_connect = on_connect
@@ -128,15 +132,14 @@ try:
     client.loop_start()
 
     while run:
-        print(config)
         online_devices = {k:v for k,v in config.items() if v["online"]}
         for device_name, device in online_devices.items():
             if time.time() > device["last_time"] + device['timeout_seconds']:
-                print("device", device_name, "is offline.")
+                logger.info("device {} is offline.".format(device_name))
                 db_write_point(device_name, "status", False)
                 device["online"] = False
         time.sleep(1)
 
 except ConnectionError:
-    print("Could not connect to DB at", DB_SERVER)
+    logger.info("Could not connect to DB at {}".format(DB_SERVER))
     sys.exit(1)
