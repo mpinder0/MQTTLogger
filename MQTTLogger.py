@@ -58,6 +58,7 @@ def on_message(client, userdata, msg):
         config[device]["series"][measurement]["last_value"] = val
         if not config[device]["online"]:
             config[device]["online"] = True
+            db_write_point(device, "status", True)
     else:
         logger.warning("{} is not a recognised measurement type.".format(measurement))
 
@@ -109,9 +110,13 @@ def save_config_json(data):
 
 def sig_exit(signum, frame):
     global run
+    global config
     logger.info("Exiting.")
     client.loop_stop()
     run = False
+    for d in config.values():
+        d["online"] = False
+    save_config_json(config)
 
 run = True
 signal.signal(signal.SIGINT, sig_exit)
