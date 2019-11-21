@@ -27,6 +27,8 @@ NEW_MEASUREMENT_DATA = {
     "filter": 0.0,
     "last_value": None
 }
+path = os.path.dirname(__file__)
+config_path = os.path.join(path, CONFIG_FILENAME)
 
 logging.basicConfig()
 logger = logging.getLogger("MQTTLogger")
@@ -99,13 +101,13 @@ def create_series_conf(device, measurement):
 
 def load_config_json():
     data = {}
-    if os.path.exists(CONFIG_FILENAME):
-        with open(CONFIG_FILENAME) as f:
+    if os.path.exists(config_path):
+        with open(config_path) as f:
             data = json.load(f)
     return data
 
 def save_config_json(data):
-    with open(CONFIG_FILENAME, "w+") as f:
+    with open(config_path, "w+") as f:
         json.dump(data, f, indent=4)
 
 def sig_exit(signum, frame):
