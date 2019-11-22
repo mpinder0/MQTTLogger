@@ -60,7 +60,7 @@ def on_message(client, userdata, msg):
         config[device]["last_time"] = time.time()
         if not config[device]["online"]:
             config[device]["online"] = True
-            db_write_point(device, "status", True)
+            db_write_point(device, "status", 1)
     else:
         logger.warning("{} is not a recognised measurement type.".format(measurement))
 
@@ -116,8 +116,9 @@ def sig_exit(signum, frame):
     logger.info("Exiting.")
     client.loop_stop()
     run = False
-    for d in config.values():
+    for d_k,d in config.items():
         d["online"] = False
+        db_write_point(d_k, "status", 0)
     save_config_json(config)
 
 run = True
@@ -143,7 +144,7 @@ try:
         for device_name, device in online_devices.items():
             if time.time() > device["last_time"] + device['timeout_seconds']:
                 logger.info("device {} is offline.".format(device_name))
-                db_write_point(device_name, "status", False)
+                db_write_point(device_name, "status", 0)
                 device["online"] = False
         time.sleep(1)
 
