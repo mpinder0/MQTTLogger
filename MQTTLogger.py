@@ -55,9 +55,9 @@ def on_message(client, userdata, msg):
         val = float(msg.payload)
         if filter_value(config, device, measurement, val):
             db_write_point(device, measurement, val)
+            config[device]["series"][measurement]["last_value"] = val
 
         config[device]["last_time"] = time.time()
-        config[device]["series"][measurement]["last_value"] = val
         if not config[device]["online"]:
             config[device]["online"] = True
             db_write_point(device, "status", True)
